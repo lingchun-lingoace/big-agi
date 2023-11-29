@@ -4,105 +4,164 @@ import { shallow } from 'zustand/shallow';
 import { Box, List } from '@mui/joy';
 import { SxProps } from '@mui/joy/styles/types';
 
-import { createDMessage, DMessage, useChatStore } from '@/common/state/store-chats';
-import { useSettingsStore } from '@/common/state/store-settings';
+import { DiagramConfig } from '~/modules/aifn/digrams/DiagramsModal';
+import { useChatLLM } from '~/modules/llms/store-llms';
 
-import { ChatMessage } from './message/ChatMessage';
-import { ChatMessageSelectable, MessagesSelectionHeader } from './message/ChatMessageSelectable';
-import { ChatModels } from '../../../data';
-import { PurposeSelector } from './PurposeSelector';
+import { ShortcutKeyName, useGlobalShortcut } from '~/common/components/useGlobalShortcut';
+import { InlineError } from '~/common/components/InlineError';
+import { createDMessage, DConversationId, DMessage, getConversation, useChatStore } from '~/common/state/store-chats';
+import { openLayoutPreferences } from '~/common/layout/store-applayout';
+import { useCapabilityElevenLabs, useCapabilityProdia } from '~/common/components/useCapabilities';
+
+import { ChatMessageMemo } from './message/ChatMessage';
+import { CleanerMessage, MessagesSelectionHeader } from './message/CleanerMessage';
+import { PersonaSelector } from './persona-selector/PersonaSelector';
+import { useChatShowSystemMessages } from '../store-app-chat';
 
 
 /**
  * A list of ChatMessages
  */
-export function ChatMessageList(props: { conversationId: string | null, isMessageSelectionMode: boolean, setIsMessageSelectionMode: (isMessageSelectionMode: boolean) => void, onExecuteConversation: (conversationId: string, history: DMessage[]) => void, onImagineFromText: (conversationId: string, userText: string) => void, sx?: SxProps }) {
+export function ChatMessageList(props: {
+  conversationId: DConversationId | null,
+  isMessageSelectionMode: boolean, setIsMessageSelectionMode: (isMessageSelectionMode: boolean) => void,
+  onConversationBranch: (conversationId: DConversationId, messageId: string) => void,
+  onConversationExecuteHistory: (conversationId: DConversationId, history: DMessage[]) => void,
+  onTextDiagram: (diagramConfig: DiagramConfig | null) => Promise<any>,
+  onTextImagine: (conversationId: DConversationId, selectedText: string) => Promise<any>,
+  onTextSpeak: (selectedText: string) => Promise<any>,
+  sx?: SxProps,
+}) {
+
   // state
+  const [isImagining, setIsImagining] = React.useState(false);
+  const [isSpeaking, setIsSpeaking] = React.useState(false);
   const [selectedMessages, setSelectedMessages] = React.useState<Set<string>>(new Set());
 
   // external state
-  const showSystemMessages = useSettingsStore(state => state.showSystemMessages);
-  const { editMessage, deleteMessage } = useChatStore(state => ({ editMessage: state.editMessage, deleteMessage: state.deleteMessage }), shallow);
-  const { messages, tokenLimit, tokenCount } = useChatStore(state => {
+  const [showSystemMessages] = useChatShowSystemMessages();
+  const { conversationMessages, editMessage, deleteMessage, historyTokenCount } = useChatStore(state => {
     const conversation = state.conversations.find(conversation => conversation.id === props.conversationId);
-    const chatModelId = conversation ? conversation.chatModelId : null;
     return {
-      messages: conversation ? conversation.messages : [],
-      tokenLimit: chatModelId ? ChatModels[chatModelId]?.contextWindowSize || 8192 : 0,
-      tokenCount: conversation ? conversation.tokenCount : 0,
+      conversationMessages: conversation ? conversation.messages : [],
+      editMessage: state.editMessage, deleteMessage: state.deleteMessage,
+      historyTokenCount: conversation ? conversation.tokenCount : 0,
     };
   }, shallow);
+  const { chatLLM } = useChatLLM();
+  const { mayWork: isImaginable } = useCapabilityProdia();
+  const { mayWork: isSpeakable } = useCapabilityElevenLabs();
+
+  // derived state
+  const { conversationId, onConversationExecuteHistory, onConversationBranch, onTextDiagram, onTextImagine, onTextSpeak } = props;
 
 
-  const handleMessageDelete = (messageId: string) =>
-    props.conversationId && deleteMessage(props.conversationId, messageId);
-
-  const handleMessageEdit = (messageId: string, newText: string) =>
-    props.conversationId && editMessage(props.conversationId, messageId, { text: newText }, true);
-
-  const handleImagineFromText = (messageText: string) =>
-    props.conversationId && props.onImagineFromText(props.conversationId, messageText);
-
-  const handleRestartFromMessage = (messageId: string, offset: number) => {
-    const truncatedHistory = messages.slice(0, messages.findIndex(m => m.id === messageId) + offset + 1);
-    props.conversationId && props.onExecuteConversation(props.conversationId, truncatedHistory);
-  };
+  // text actions
 
   const handleRunExample = (text: string) =>
-    props.conversationId && props.onExecuteConversation(props.conversationId, [...messages, createDMessage('user', text)]);
+    conversationId && onConversationExecuteHistory(conversationId, [...conversationMessages, createDMessage('user', text)]);
 
 
-  // hide system messages if the user chooses so
-  // NOTE: reverse is because we'll use flexDirection: 'column-reverse' to auto-snap-to-bottom
-  const filteredMessages = messages.filter(m => m.role !== 'system' || showSystemMessages).reverse();
+  // message menu methods proxy
 
-  // when there are no messages, show the purpose selector
-  if (!filteredMessages.length)
-    return props.conversationId ? (
-      <Box sx={props.sx || {}}>
-        <PurposeSelector conversationId={props.conversationId} runExample={handleRunExample} />
-      </Box>
-    ) : null;
+  const handleConversationBranch = React.useCallback((messageId: string) => {
+    conversationId && onConversationBranch(conversationId, messageId);
+  }, [conversationId, onConversationBranch]);
+
+  const handleConversationRestartFrom = React.useCallback((messageId: string, offset: number) => {
+    const messages = getConversation(conversationId)?.messages;
+    if (messages) {
+      const truncatedHistory = messages.slice(0, messages.findIndex(m => m.id === messageId) + offset + 1);
+      conversationId && onConversationExecuteHistory(conversationId, truncatedHistory);
+    }
+  }, [conversationId, onConversationExecuteHistory]);
+
+  const handleMessageDelete = React.useCallback((messageId: string) => {
+    conversationId && deleteMessage(conversationId, messageId);
+  }, [conversationId, deleteMessage]);
+
+  const handleMessageEdit = React.useCallback((messageId: string, newText: string) => {
+    conversationId && editMessage(conversationId, messageId, { text: newText }, true);
+  }, [conversationId, editMessage]);
+
+  const handleTextDiagram = React.useCallback(async (messageId: string, text: string) => {
+    conversationId && await onTextDiagram({ conversationId: conversationId, messageId, text });
+  }, [conversationId, onTextDiagram]);
+
+  const handleTextImagine = React.useCallback(async (text: string) => {
+    if (!isImaginable)
+      return openLayoutPreferences(2);
+    if (conversationId) {
+      setIsImagining(true);
+      await onTextImagine(conversationId, text);
+      setIsImagining(false);
+    }
+  }, [conversationId, isImaginable, onTextImagine]);
+
+  const handleTextSpeak = React.useCallback(async (text: string) => {
+    if (!isSpeakable)
+      return openLayoutPreferences(3);
+    setIsSpeaking(true);
+    await onTextSpeak(text);
+    setIsSpeaking(false);
+  }, [isSpeakable, onTextSpeak]);
 
 
-  const handleToggleSelected = (messageId: string, selected: boolean) => {
+  // operate on the local selection set
+
+  const handleSelectAll = (selected: boolean) => {
+    const newSelected = new Set<string>();
+    if (selected)
+      for (const message of conversationMessages)
+        newSelected.add(message.id);
+    setSelectedMessages(newSelected);
+  };
+
+  const handleSelectMessage = (messageId: string, selected: boolean) => {
     const newSelected = new Set(selectedMessages);
     selected ? newSelected.add(messageId) : newSelected.delete(messageId);
     setSelectedMessages(newSelected);
   };
 
-  const handleSelectAllMessages = (selected: boolean) => {
-    const newSelected = new Set<string>();
-    if (selected)
-      for (let message of messages)
-        newSelected.add(message.id);
-    setSelectedMessages(newSelected);
-  };
-
-  const handleDeleteSelectedMessages = () => {
-    if (props.conversationId)
-      for (let selectedMessage of selectedMessages)
-        deleteMessage(props.conversationId, selectedMessage);
+  const handleSelectionDelete = () => {
+    if (conversationId)
+      for (const selectedMessage of selectedMessages)
+        deleteMessage(conversationId, selectedMessage);
     setSelectedMessages(new Set());
   };
 
+  useGlobalShortcut(props.isMessageSelectionMode && ShortcutKeyName.Esc, false, false, false, () => {
+    props.setIsMessageSelectionMode(false);
+  });
 
-  // scrollbar style
-  // const scrollbarStyle: SxProps = {
-  //   '&::-webkit-scrollbar': {
-  //     md: {
-  //       width: 8,
-  //       background: theme.vars.palette.neutral.plainHoverBg,
-  //     },
-  //   },
-  //   '&::-webkit-scrollbar-thumb': {
-  //     background: theme.vars.palette.neutral.solidBg,
-  //     borderRadius: 6,
-  //   },
-  //   '&::-webkit-scrollbar-thumb:hover': {
-  //     background: theme.vars.palette.neutral.solidHoverBg,
-  //   },
-  // };
+
+  // text-diff functionality, find the messages to diff with
+
+  const { diffMessage, diffText } = React.useMemo(() => {
+    const [msgB, msgA] = conversationMessages.filter(m => m.role === 'assistant').reverse();
+    if (msgB?.text && msgA?.text && !msgB?.typing) {
+      const textA = msgA.text, textB = msgB.text;
+      const lenA = textA.length, lenB = textB.length;
+      if (lenA > 80 && lenB > 80 && lenA > lenB / 3 && lenB > lenA / 3)
+        return { diffMessage: msgB, diffText: textA };
+    }
+    return { diffMessage: undefined, diffText: undefined };
+  }, [conversationMessages]);
+
+  // no content: show the persona selector
+
+  const filteredMessages = conversationMessages
+    .filter(m => m.role !== 'system' || showSystemMessages) // hide the System message if the user choses to
+    .reverse(); // 'reverse' is because flexDirection: 'column-reverse' to auto-snap-to-bottom
+
+  if (!filteredMessages.length)
+    return (
+      <Box sx={{ ...props.sx }}>
+        {conversationId
+          ? <PersonaSelector conversationId={conversationId} runExample={handleRunExample} />
+          : <InlineError severity='info' error='Select a conversation' sx={{ m: 2 }} />}
+      </Box>
+    );
 
   return (
     <List sx={{
@@ -110,24 +169,36 @@ export function ChatMessageList(props: { conversationId: string | null, isMessag
       // this makes sure that the the window is scrolled to the bottom (column-reverse)
       display: 'flex', flexDirection: 'column-reverse',
       // fix for the double-border on the last message (one by the composer, one to the bottom of the message)
-      marginBottom: '-1px',
+      // marginBottom: '-1px',
     }}>
 
       {filteredMessages.map((message, idx) =>
         props.isMessageSelectionMode ? (
-          <ChatMessageSelectable
-            key={'sel-' + message.id} message={message}
-            isBottom={idx === 0} remainingTokens={tokenLimit - tokenCount}
-            selected={selectedMessages.has(message.id)} onToggleSelected={handleToggleSelected}
+
+          <CleanerMessage
+            key={'sel-' + message.id}
+            message={message}
+            isBottom={idx === 0} remainingTokens={(chatLLM ? chatLLM.contextTokens : 0) - historyTokenCount}
+            selected={selectedMessages.has(message.id)} onToggleSelected={handleSelectMessage}
           />
+
         ) : (
-          <ChatMessage
-            key={'msg-' + message.id} message={message}
+
+          <ChatMessageMemo
+            key={'msg-' + message.id}
+            message={message}
+            diffPreviousText={message === diffMessage ? diffText : undefined}
             isBottom={idx === 0}
-            onMessageDelete={() => handleMessageDelete(message.id)}
-            onMessageEdit={newText => handleMessageEdit(message.id, newText)}
-            onMessageRunFrom={(offset: number) => handleRestartFromMessage(message.id, offset)}
-            onImagine={handleImagineFromText} />
+            isImagining={isImagining} isSpeaking={isSpeaking}
+            onConversationBranch={handleConversationBranch}
+            onConversationRestartFrom={handleConversationRestartFrom}
+            onMessageDelete={handleMessageDelete}
+            onMessageEdit={handleMessageEdit}
+            onTextDiagram={handleTextDiagram}
+            onTextImagine={handleTextImagine}
+            onTextSpeak={handleTextSpeak}
+          />
+
         ),
       )}
 
@@ -136,10 +207,10 @@ export function ChatMessageList(props: { conversationId: string | null, isMessag
         <MessagesSelectionHeader
           hasSelected={selectedMessages.size > 0}
           isBottom={filteredMessages.length === 0}
-          sumTokens={tokenCount}
+          sumTokens={historyTokenCount}
           onClose={() => props.setIsMessageSelectionMode(false)}
-          onSelectAll={handleSelectAllMessages}
-          onDeleteMessages={handleDeleteSelectedMessages}
+          onSelectAll={handleSelectAll}
+          onDeleteMessages={handleSelectionDelete}
         />
       )}
 

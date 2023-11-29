@@ -1,16 +1,15 @@
 import * as React from 'react';
-import { AppType } from 'next/app';
+import { AppType, MyAppProps } from 'next/app';
 import { default as Document, DocumentContext, DocumentProps, Head, Html, Main, NextScript } from 'next/document';
 import createEmotionServer from '@emotion/server/create-instance';
 import { getInitColorSchemeScript } from '@mui/joy/styles';
 
-import { Brand } from '@/common/brand';
-import { MyAppProps } from './_app';
-import { bodyFontClassName, createEmotionCache } from '@/common/theme';
+import { Brand } from '~/common/app.config';
+import { bodyFontClassName, createEmotionCache } from '~/common/app.theme';
 
 
 interface MyDocumentProps extends DocumentProps {
-  emotionStyleTags: JSX.Element[];
+  emotionStyleTags: React.JSX.Element[];
 }
 
 export default function MyDocument({ emotionStyleTags }: MyDocumentProps) {
@@ -19,7 +18,6 @@ export default function MyDocument({ emotionStyleTags }: MyDocumentProps) {
       <Head>
         {/* Meta (missing Title, set by the App or Page) */}
         <meta name='description' content={Brand.Meta.Description} />
-        <meta name='keywords' content={Brand.Meta.Keywords} />
         <meta name='theme-color' content={Brand.Meta.ThemeColor} />
 
         {/* Favicons & PWA */}
@@ -32,7 +30,7 @@ export default function MyDocument({ emotionStyleTags }: MyDocumentProps) {
         <meta name='apple-mobile-web-app-status-bar-style' content='black' />
 
         {/* Opengraph */}
-        <meta property='og:title' content={Brand.Meta.Title} />
+        <meta property='og:title' content={Brand.Title.Common} />
         <meta property='og:description' content={Brand.Meta.Description} />
         {Brand.URIs.CardImage && <meta property='og:image' content={Brand.URIs.CardImage} />}
         <meta property='og:url' content={Brand.URIs.Home} />
@@ -42,7 +40,7 @@ export default function MyDocument({ emotionStyleTags }: MyDocumentProps) {
         {/* Twitter */}
         <meta property='twitter:card' content='summary_large_image' />
         <meta property='twitter:url' content={Brand.URIs.Home} />
-        <meta property='twitter:title' content={Brand.Meta.Title} />
+        <meta property='twitter:title' content={Brand.Title.Common} />
         <meta property='twitter:description' content={Brand.Meta.Description} />
         {Brand.URIs.CardImage && <meta property='twitter:image' content={Brand.URIs.CardImage} />}
         <meta name='twitter:site' content={Brand.Meta.TwitterSite} />

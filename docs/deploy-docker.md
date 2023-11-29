@@ -1,26 +1,60 @@
-# Deploy `big-AGI` with Docker 🐳
+# Deploying `big-AGI` with Docker
 
-Deploy the big-AGI application using Docker containers for a consistent, efficient, and automated deployment process. Enjoy faster development cycles, easier collaboration, and seamless environment management. 🚀
+Utilize Docker containers to deploy the big-AGI application for an efficient and automated deployment process.
+Docker ensures faster development cycles, easier collaboration, and seamless environment management.
 
-Docker is a platform for developing, packaging, and deploying applications as lightweight containers, ensuring consistent behavior across environments.
+## Build and run your container 🔧
 
-## `big-AGI` Docker Components
+1. **Clone big-AGI**
+   ```bash
+   git clone https://github.com/enricoros/big-agi.git
+   cd big-agi
+   ``` 
+2. **Build the Docker Image**: Build a local docker image from the provided Dockerfile:
+   ```bash
+   docker build -t big-agi .
+   ```
+3. **Run the Docker Container**: start a Docker container from the newly built image,
+   and expose its http port 3000 to your `localhost:3000` using:
+   ```bash
+   docker run -d -p 3000:3000 big-agi
+   ```
+4. Browse to [http://localhost:3000](http://localhost:3000)
 
-The big-AGI repository includes a Dockerfile and a GitHub Actions workflow for building and publishing a Docker image of the application.
+## Documentation
+
+The big-AGI repository includes a Dockerfile and a GitHub Actions workflow for building and publishing a
+Docker image of the application.
 
 ### Dockerfile
 
-The [`Dockerfile`](../Dockerfile) sets up a Node.js environment, installs dependencies, and creates a production-ready version of the application.
+The [`Dockerfile`](../Dockerfile) describes how to create a Docker image. It establishes a Node.js environment,
+installs dependencies, and creates a production-ready version of the application as a local container.
 
-### GitHub Actions Workflow
+### Official container images
 
-The [`.github/workflows/docker-image.yml`](../.github/workflows/docker-image.yml) file automates building and publishing the Docker image when changes are pushed to the `main` branch.
+The [`.github/workflows/docker-image.yml`](../.github/workflows/docker-image.yml) file automates the
+building and publishing of the Docker images to the GitHub Container Registry (ghcr) when changes are
+pushed to the `main` branch.
 
-## Deploy Steps
+Official pre-built containers: [ghcr.io/enricoros/big-agi](https://github.com/enricoros/big-agi/pkgs/container/big-agi)
 
-1. Clone the big-AGI repository
-2. Navigate to the project directory
-3. Build the Docker image using the provided Dockerfile
-4. Run the Docker container with the built image
+Run official pre-built containers:
+```bash
+docker run -d -p 3000:3000 ghcr.io/enricoros/big-agi
+```
 
-Embrace the benefits of Docker for a reliable and efficient big-AGI deployment. 🎉
+### Run official containers
+
+In addition, the repository also includes a `docker-compose.yaml` file, configured to run the pre-built
+'ghcr image'. This file is used to define the `big-agi` service, the ports to expose, and the command to run.
+
+If you have Docker Compose installed, you can run the Docker container with `docker-compose up`
+to pull the Docker image (if it hasn't been pulled already) and start a Docker container. If you want to
+update the image to the latest version, you can run `docker-compose pull` before starting the service.
+
+```bash
+docker-compose up -d
+```
+
+Leverage Docker's capabilities for a reliable and efficient big-AGI deployment.
